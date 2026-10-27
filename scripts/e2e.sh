@@ -20,7 +20,7 @@ for name in "${!expected[@]}"; do
   status=""
   for _ in $(seq 90); do
     status="$(curl -fsS "$API/samples/${sha[$name]}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
-    [[ $status == done || $status == error ]] && break
+    [[ $status == "done" || $status == "error" ]] && break
     sleep 2
   done
   report="$(curl -fsS "$API/samples/${sha[$name]}/report" || echo '{}')"
@@ -30,7 +30,7 @@ r = json.loads(sys.argv[1] or "{}")
 sigs = ",".join(s["id"] for s in r.get("signatures", []))
 print(r.get("verdict", "-"), r.get("score", "-"), sigs or "-")' "$report")"
   read -r verdict score sigs <<< "$summary"
-  if [[ $status == done && $verdict == "${expected[$name]}" ]]; then
+  if [[ $status == "done" && $verdict == "${expected[$name]}" ]]; then
     echo "PASS  $name → $verdict ($score) [$sigs]"
   else
     echo "FAIL  $name → status=$status verdict=$verdict, expected ${expected[$name]} [$sigs]"

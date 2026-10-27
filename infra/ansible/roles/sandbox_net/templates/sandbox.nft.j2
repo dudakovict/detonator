@@ -9,21 +9,21 @@ delete table inet sandbox
 table inet sandbox {
   chain input {
     type filter hook input priority filter; policy accept;
-    iifname "{{ sandbox_bridge }}" jump from_sandbox
+    iifname "{{ sandbox_net_bridge }}" jump from_sandbox
   }
 
   chain from_sandbox {
     # Replies to connections the node opened (the worker talking to the agent).
     ct state established,related accept
     udp dport 67 accept
-    ip daddr {{ sink_ip }} meta l4proto { tcp, udp } th dport 53 accept
-    ip daddr {{ sink_ip }} tcp dport 80 accept
+    ip daddr {{ sandbox_net_sink_ip }} meta l4proto { tcp, udp } th dport 53 accept
+    ip daddr {{ sandbox_net_sink_ip }} tcp dport 80 accept
     counter drop
   }
 
   chain forward {
     type filter hook forward priority filter; policy accept;
-    iifname "{{ sandbox_bridge }}" counter drop
-    oifname "{{ sandbox_bridge }}" counter drop
+    iifname "{{ sandbox_net_bridge }}" counter drop
+    oifname "{{ sandbox_net_bridge }}" counter drop
   }
 }

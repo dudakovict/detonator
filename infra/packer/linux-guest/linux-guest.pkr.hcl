@@ -39,7 +39,7 @@ source "qemu" "ubuntu" {
   machine_type = "q35"
   cpu_model    = "host"
   cpus         = 2
-  memory       = 1024
+  memory       = 512 # the node runs ELK and two sandbox VMs too; see build.sh
   headless     = true
 
   iso_url        = "https://cloud-images.ubuntu.com/minimal/releases/noble/release-${var.ubuntu_release}/ubuntu-24.04-minimal-cloudimg-amd64.img"

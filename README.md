@@ -72,7 +72,7 @@ and monitored.
 | 4 | Control plane on k3s (Helm): API, Postgres, RabbitMQ, object storage | ✅ |
 | 5 | Worker / orchestrator: detonation, parsing, IOCs, verdicts | ✅ |
 | 6 | Observability: Prometheus/Grafana metrics, ELK logs, alerts, runbooks | ✅ |
-| 7 | CI/CD: build, scan, deploy, end-to-end tests | ⏳ |
+| 7 | CI/CD: build, scan, deploy, end-to-end tests | ✅ |
 
 ## Getting started
 
@@ -96,7 +96,25 @@ make api-test    # submit a harmless sample and check it was stored and queued
 make worker      # install the detonation workers on the node (Ansible)
 make e2e         # analyse the benign samples end to end and check their verdicts
 make observability  # Prometheus, Alertmanager, Grafana and ELK on k3s (Helm)
+make runner      # register the node as a self-hosted GitHub Actions runner (Ansible)
 ```
+
+## CI/CD
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and push:
+
+| Job | Runner | What it does |
+|---|---|---|
+| lint | GitHub-hosted | shellcheck, ruff, hadolint, terraform/packer fmt + validate, ansible-lint, helm lint |
+| test | GitHub-hosted | worker parser and rule unit tests |
+| image | GitHub-hosted | builds the API image, fails on fixable HIGH/CRITICAL CVEs (Trivy), reports IaC misconfigurations to the Security tab, pushes to GHCR on `main` |
+| secrets | GitHub-hosted | gitleaks over the full history |
+| deploy | self-hosted, on the node | on `main` only, after approval in the `lab` environment: `helm upgrade` with the new image, then the end-to-end test |
+
+The self-hosted runner never runs pull request code, and has no sudo and no SSH key;
+its Kubernetes account can change only the `detonator` namespace. Changes that need
+root on the node (workers, firewall, guest images) are applied from the workstation
+with `make`.
 
 ## Observability
 

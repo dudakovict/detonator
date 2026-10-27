@@ -51,7 +51,7 @@
 - name: Write the kubeconfig on the workstation
   ansible.builtin.copy:
     content: "{{ k3s_kubeconfig.content | b64decode | replace('https://127.0.0.1:6443', 'https://' ~ k3s_node_ip ~ ':6443') }}"
-    dest: "{{ kubeconfig_dest }}"
+    dest: "{{ k3s_kubeconfig_dest }}"
     mode: "0600"
   delegate_to: localhost
   become: false

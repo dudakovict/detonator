@@ -1,0 +1,7 @@
+# Self-hosted GitHub Actions runner on the sandbox node, for the deploy and e2e
+# jobs. Run with `make runner`, which fetches a registration token.
+- name: Install the GitHub Actions runner
+  hosts: sandbox_nodes
+  become: true
+  roles:
+    - github_runner

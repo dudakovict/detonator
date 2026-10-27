@@ -4,10 +4,10 @@ Samples are identified by SHA-256. The file goes to S3-compatible object storage
 its metadata to Postgres, and a job message to RabbitMQ for the worker. A file
 that was already submitted returns its existing record instead of a new job.
 """
+import asyncio
 import hashlib
 import json
 import os
-import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -90,13 +90,14 @@ def init():
 @asynccontextmanager
 async def lifespan(_app):
     # Dependencies may still be starting when the pod comes up; wait for them.
+    # init() blocks, so it runs in a thread and the event loop stays free.
     for attempt in range(30):
         try:
-            init()
+            await asyncio.to_thread(init)
             break
         except Exception as e:  # noqa: BLE001 - any failure means "not ready yet"
             print(f"init attempt {attempt + 1} failed: {e}", flush=True)
-            time.sleep(2)
+            await asyncio.sleep(2)
     else:
         raise RuntimeError("dependencies not reachable")
     yield

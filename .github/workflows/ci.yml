@@ -12,7 +12,112 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/detonator-api
+
 jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.17.0
+      - uses: hashicorp/setup-packer@ce93c3c08a6c2ff2275bf4b54ff0d9a75f6c9789 # v3.4.0
+        with:
+          version: 1.16.2
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.1
+      - run: pip install ruff==0.17.3 ansible-lint==26.10.1
+
+      - name: shellcheck
+        run: >
+          docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0
+          scripts/*.sh infra/packer/linux-guest/*.sh samples/benign/*.sh
+      - name: ruff
+        run: ruff check services samples
+      - name: hadolint
+        run: docker run --rm -i hadolint/hadolint:v2.14.0 < services/api/Dockerfile
+      - name: terraform
+        working-directory: infra/terraform
+        run: |
+          terraform fmt -check -diff
+          terraform init -backend=false -input=false
+          terraform validate
+      - name: packer
+        working-directory: infra/packer/linux-guest
+        env:
+          PACKER_GITHUB_API_TOKEN: ${{ github.token }}
+        run: |
+          packer fmt -check -diff .
+          packer init .
+          packer validate -syntax-only .
+      - name: ansible-lint
+        working-directory: infra/ansible
+        run: ansible-lint
+      - name: helm
+        run: |
+          helm lint deploy/helm/detonator --set api.image.tag=ci
+          helm dependency build deploy/helm/observability
+          helm lint deploy/helm/observability
+
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12" # the worker's Python on the node
+      - run: pip install pytest==9.1.1 PyYAML==6.0.3
+      - name: worker unit tests
+        working-directory: services/worker
+        run: pytest -q
+
+  image:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write # push to GHCR (main only)
+      security-events: write # Trivy results in the Security tab
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: services/api
+          load: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+      # Fail on HIGH/CRITICAL vulnerabilities that have a fix available.
+      - name: trivy image scan
+        run: >
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.76.1
+          image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed --no-progress
+          "$IMAGE:$GITHUB_SHA"
+      # Misconfigurations in Dockerfile, Helm, Terraform: reported, not blocking.
+      - name: trivy config scan
+        run: >
+          docker run --rm -v "$PWD:/src" aquasec/trivy:0.76.1
+          config --format sarif --output /src/trivy-config.sarif --exit-code 0 /src
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        if: github.event_name == 'push'
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: push
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: docker push "$IMAGE:$GITHUB_SHA"
+
   secrets:
     runs-on: ubuntu-24.04
     steps:
@@ -23,3 +128,23 @@ jobs:
         run: >
           docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.0
           git /repo --redact --verbose
+
+  # The only job on the self-hosted runner inside the lab. It never runs for
+  # pull requests (untrusted code), and the "lab" environment needs approval.
+  deploy:
+    needs: [lint, test, image, secrets]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, detonator-node]
+    environment: lab
+    concurrency:
+      group: deploy-lab
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: deploy the control plane
+        run: >
+          helm upgrade --install detonator deploy/helm/detonator --namespace detonator
+          --wait --timeout 5m
+          --set api.image.repository="$IMAGE" --set api.image.tag="$GITHUB_SHA"
+      - name: end-to-end test
+        run: scripts/e2e.sh http://192.168.200.10:30080

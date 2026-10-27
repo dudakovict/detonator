@@ -1,0 +1,31 @@
+# The runner's Kubernetes identity: full control of the {{ github_runner_namespace }}
+# namespace (so Helm can deploy there), nothing outside it.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: github-runner
+  namespace: {{ github_runner_namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-runner
+  namespace: {{ github_runner_namespace }}
+subjects:
+  - kind: ServiceAccount
+    name: github-runner
+    namespace: {{ github_runner_namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin # built in; namespaced through this RoleBinding
+---
+# A long-lived token for the kubeconfig; delete this Secret to revoke it.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-runner-token
+  namespace: {{ github_runner_namespace }}
+  annotations:
+    kubernetes.io/service-account.name: github-runner
+type: kubernetes.io/service-account-token

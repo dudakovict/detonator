@@ -1,0 +1,109 @@
+- name: Install the runner's dependencies
+  ansible.builtin.dnf:
+    name: [libicu, git, tar]
+    state: present
+
+- name: Create the runner user (no sudo, no SSH key)
+  ansible.builtin.user:
+    name: github-runner
+    system: true
+    shell: /sbin/nologin
+    home: /home/github-runner
+    create_home: true
+
+# Downloads are checked against pinned checksums before anything is unpacked.
+- name: Download Helm
+  ansible.builtin.get_url:
+    url: "https://get.helm.sh/helm-{{ github_runner_helm_version }}-linux-amd64.tar.gz"
+    dest: /var/cache/helm-{{ github_runner_helm_version }}.tar.gz
+    checksum: "sha256:{{ github_runner_helm_sha256 }}"
+    mode: "0644"
+
+- name: Install Helm
+  ansible.builtin.unarchive:
+    src: /var/cache/helm-{{ github_runner_helm_version }}.tar.gz
+    dest: /usr/local/bin
+    remote_src: true
+    extra_opts: [--strip-components=1, linux-amd64/helm]
+    owner: root
+    group: root
+    creates: /usr/local/bin/helm
+
+- name: Download the runner
+  ansible.builtin.get_url:
+    url: "https://github.com/actions/runner/releases/download/v{{ github_runner_version }}/actions-runner-linux-x64-{{ github_runner_version }}.tar.gz"
+    dest: /var/cache/actions-runner-{{ github_runner_version }}.tar.gz
+    checksum: "sha256:{{ github_runner_sha256 }}"
+    mode: "0644"
+
+- name: Create the runner directory
+  ansible.builtin.file:
+    path: "{{ github_runner_dir }}"
+    state: directory
+    owner: github-runner
+    group: github-runner
+    mode: "0755"
+
+- name: Unpack the runner
+  ansible.builtin.unarchive:
+    src: /var/cache/actions-runner-{{ github_runner_version }}.tar.gz
+    dest: "{{ github_runner_dir }}"
+    remote_src: true
+    owner: github-runner
+    group: github-runner
+    creates: "{{ github_runner_dir }}/config.sh"
+
+- name: Grant the runner its Kubernetes identity
+  ansible.builtin.shell: |
+    set -o pipefail
+    cat <<'EOF' | /usr/local/bin/k3s kubectl apply -f -
+    {{ lookup('template', 'rbac.yaml.j2') }}
+    EOF
+  register: github_runner_rbac
+  changed_when: "' created' in github_runner_rbac.stdout or ' configured' in github_runner_rbac.stdout"
+
+- name: Read the runner's token
+  ansible.builtin.command: >
+    /usr/local/bin/k3s kubectl -n {{ github_runner_namespace }} get secret github-runner-token -o json
+  register: github_runner_sa
+  changed_when: false
+  no_log: true
+
+- name: Create the runner's kube directory
+  ansible.builtin.file:
+    path: /home/github-runner/.kube
+    state: directory
+    owner: github-runner
+    group: github-runner
+    mode: "0700"
+
+- name: Write the runner's kubeconfig
+  ansible.builtin.template:
+    src: kubeconfig.j2
+    dest: /home/github-runner/.kube/config
+    owner: github-runner
+    group: github-runner
+    mode: "0600"
+  no_log: true
+
+- name: Register the runner with GitHub
+  ansible.builtin.command: >
+    ./config.sh --unattended --url {{ github_runner_repo_url }} --token {{ github_runner_token }}
+    --name {{ github_runner_name }} --labels {{ github_runner_labels }} --work _work --replace
+  args:
+    chdir: "{{ github_runner_dir }}"
+    creates: "{{ github_runner_dir }}/.runner"
+  become_user: github-runner
+  no_log: true
+
+- name: Install the runner service
+  ansible.builtin.command: ./svc.sh install github-runner
+  args:
+    chdir: "{{ github_runner_dir }}"
+    creates: "{{ github_runner_dir }}/.service"
+
+- name: Start the runner service
+  ansible.builtin.command: ./svc.sh start
+  args:
+    chdir: "{{ github_runner_dir }}"
+  changed_when: false

@@ -26,14 +26,16 @@
     state: absent
     purge: true
 
+# systemctl, not the systemd module: not every unit exists in every image
+# release, and the module refuses to mask a unit it can't find.
 - name: Mask services and timers that phone home
-  ansible.builtin.command: systemctl mask {{ item }}
+  ansible.builtin.command: systemctl mask {{ item }} # noqa: command-instead-of-module
   loop: [systemd-timesyncd.service, motd-news.timer, fwupd-refresh.timer, ua-timer.timer]
   changed_when: true
 
 - name: Create the user samples run as
   ansible.builtin.user:
-    name: "{{ sample_user }}"
+    name: "{{ sandbox_guest_sample_user }}"
     shell: /bin/bash
     create_home: true
 
@@ -46,13 +48,13 @@
 
 - name: Install the guest agent
   ansible.builtin.copy:
-    src: "{{ agent_src_dir }}/agent.py"
+    src: "{{ sandbox_guest_agent_src_dir }}/agent.py"
     dest: /opt/guest-agent/agent.py
     mode: "0755"
 
 - name: Install the guest agent service
   ansible.builtin.copy:
-    src: "{{ agent_src_dir }}/guest-agent.service"
+    src: "{{ sandbox_guest_agent_src_dir }}/guest-agent.service"
     dest: /etc/systemd/system/guest-agent.service
     mode: "0644"
 
@@ -61,7 +63,7 @@
     dest: /etc/systemd/system/guest-agent.service.d/override.conf
     content: |
       [Service]
-      Environment=AGENT_RUN_AS={{ sample_user }}
+      Environment=AGENT_RUN_AS={{ sandbox_guest_sample_user }}
     mode: "0644"
 
 - name: Enable the guest agent
@@ -84,7 +86,7 @@
             match: {name: "en*"}
             dhcp4: true
             dhcp4-overrides: {use-dns: false}
-            nameservers: {addresses: [{{ sandbox_dns }}]}
+            nameservers: {addresses: [{{ sandbox_guest_dns }}]}
     mode: "0600"
 
 - name: Remove the cloud-init network config
@@ -114,9 +116,12 @@
     rm -f /var/lib/dbus/machine-id /etc/ssh/ssh_host_*
   changed_when: true
 
-- name: Clean package caches and logs
+- name: Clean the package cache
+  ansible.builtin.apt:
+    clean: true
+
+- name: Clean package lists and logs
   ansible.builtin.shell: |
-    apt-get clean
     rm -rf /var/lib/apt/lists/*
     journalctl --rotate && journalctl --vacuum-time=1s
     find /var/log -type f -name '*.log' -exec truncate -s 0 {} +

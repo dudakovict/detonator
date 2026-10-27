@@ -19,15 +19,14 @@ import threading
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
+import analysis
 import boto3
 import pika
 import prometheus_client as prom
 import psycopg
-
-import analysis
 import rules
 
 DATABASE_URL = os.environ["DATABASE_URL"]
@@ -60,7 +59,7 @@ RULES = rules.load_rules()
 
 def log(event, **fields):
     """One JSON object per line on stdout; journald keeps it, Filebeat ships it."""
-    print(json.dumps({"ts": datetime.now(timezone.utc).isoformat(), "event": event, **fields}),
+    print(json.dumps({"ts": datetime.now(UTC).isoformat(), "event": event, **fields}),
           flush=True)
 
 
@@ -130,21 +129,20 @@ def detonate(vm, job, work):
     pcap = work / "capture.pcap"
     # tcpdump writes to a pipe rather than a file: SELinux confines tcpdump to a
     # domain that may not write into the worker's directory.
-    pcap_file = open(pcap, "wb")
-    capture = subprocess.Popen(["tcpdump", "-i", vm.tap_device(), "-U", "-s", "256", "-w", "-"],
-                               stdout=pcap_file, stderr=subprocess.DEVNULL)
-    started = time.time()
-    try:
-        vm.call("POST", f"/upload?name={urllib.request.quote(filename)}", sample)
-        execution = json.loads(vm.call("POST", "/execute",
-                                       json.dumps({"timeout": SAMPLE_TIMEOUT}).encode(),
-                                       timeout=SAMPLE_TIMEOUT + 60))
-        (work / "results.tar.gz").write_bytes(vm.call("GET", "/results", timeout=60))
-    finally:
-        time.sleep(1)  # let the last packets and sinkhole lines land
-        capture.send_signal(signal.SIGINT)
-        capture.wait(timeout=10)
-        pcap_file.close()
+    with open(pcap, "wb") as pcap_file:
+        capture = subprocess.Popen(["tcpdump", "-i", vm.tap_device(), "-U", "-s", "256", "-w", "-"],
+                                   stdout=pcap_file, stderr=subprocess.DEVNULL)
+        started = time.time()
+        try:
+            vm.call("POST", f"/upload?name={urllib.request.quote(filename)}", sample)
+            execution = json.loads(vm.call("POST", "/execute",
+                                           json.dumps({"timeout": SAMPLE_TIMEOUT}).encode(),
+                                           timeout=SAMPLE_TIMEOUT + 60))
+            (work / "results.tar.gz").write_bytes(vm.call("GET", "/results", timeout=60))
+        finally:
+            time.sleep(1)  # let the last packets and sinkhole lines land
+            capture.send_signal(signal.SIGINT)
+            capture.wait(timeout=10)
     finished = time.time()
 
     results = work / "results"
@@ -195,7 +193,7 @@ def run_job(vm, body):
     job = json.loads(body)
     sha256 = job["sha256"]
     log("job_started", sha256=sha256, vm=vm.name)
-    if not set_status(sha256, "running", started_at=datetime.now(timezone.utc), error=None):
+    if not set_status(sha256, "running", started_at=datetime.now(UTC), error=None):
         log("job_skipped", sha256=sha256, reason="no such sample")
         return True
     work = Path(tempfile.mkdtemp(dir=WORK_DIR))
@@ -205,7 +203,7 @@ def run_job(vm, body):
         report = detonate(vm, job, work)
         store_iocs(sha256, report["iocs"])
         set_status(sha256, "done", verdict=report["verdict"], score=report["score"],
-                   finished_at=datetime.now(timezone.utc))
+                   finished_at=datetime.now(UTC))
         log("job_finished", sha256=sha256, vm=vm.name, verdict=report["verdict"],
             score=report["score"], duration_s=report["analysis"]["duration_s"])
         JOBS.labels(vm.name, "done", report["verdict"]).inc()

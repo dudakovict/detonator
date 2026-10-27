@@ -1,5 +1,5 @@
-packer_version: 1.16.2
+kvm_host_packer_version: 1.16.2
 # Packer's Ansible provisioner runs this, so it must support the guest's Python 3.12.
-ansible_core_version: 2.20.1
-base_image_dir: /var/lib/libvirt/images/base
-vm_disk_dir: /var/lib/libvirt/images/sbx
+kvm_host_ansible_core_version: 2.20.1
+kvm_host_base_image_dir: /var/lib/libvirt/images/base
+kvm_host_vm_disk_dir: /var/lib/libvirt/images/sbx

@@ -1,9 +1,9 @@
 worker_dir: /opt/detonator-worker
 worker_src_dir: "{{ playbook_dir }}/../../services/worker"
-sample_timeout: 30
+worker_sample_timeout: 30
 # The control plane, reached through its NodePorts (deploy/helm/detonator/values.yaml).
-control_plane_ip: "{{ ansible_host }}"
-control_plane_namespace: detonator
-postgres_port: 30432
-rabbitmq_port: 30672
-objectstore_port: 30333
+worker_control_plane_ip: "{{ ansible_host }}"
+worker_control_plane_namespace: detonator
+worker_postgres_port: 30432
+worker_rabbitmq_port: 30672
+worker_objectstore_port: 30333

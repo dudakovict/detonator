@@ -20,7 +20,7 @@
 
 - name: Install Packer
   ansible.builtin.dnf:
-    name: "packer-{{ packer_version }}"
+    name: "packer-{{ kvm_host_packer_version }}"
     state: present
 
 - name: Enable the libvirt daemons
@@ -46,8 +46,8 @@
     state: directory
     mode: "0755"
   loop:
-    - "{{ base_image_dir }}" # golden images
-    - "{{ vm_disk_dir }}" # per-VM overlay disks (libvirt pool "sbx")
+    - "{{ kvm_host_base_image_dir }}" # golden images
+    - "{{ kvm_host_vm_disk_dir }}" # per-VM overlay disks (libvirt pool "sbx")
 
 - name: Create a virtualenv for ansible-core
   ansible.builtin.command: python3.12 -m venv /opt/ansible
@@ -55,6 +55,6 @@
     creates: /opt/ansible/bin/python
 
 - name: Install ansible-core for Packer's Ansible provisioner
-  ansible.builtin.command: /opt/ansible/bin/pip install "ansible-core=={{ ansible_core_version }}"
-  register: pip_ansible
-  changed_when: "'Successfully installed' in pip_ansible.stdout"
+  ansible.builtin.command: /opt/ansible/bin/pip install "ansible-core=={{ kvm_host_ansible_core_version }}"
+  register: kvm_host_pip_ansible
+  changed_when: "'Successfully installed' in kvm_host_pip_ansible.stdout"

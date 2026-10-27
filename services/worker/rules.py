@@ -10,9 +10,10 @@ import yaml
 
 MALICIOUS_SCORE = 60
 SUSPICIOUS_SCORE = 25
+RULES_FILE = Path(__file__).with_name("rules.yaml")
 
 
-def load_rules(path=Path(__file__).with_name("rules.yaml")):
+def load_rules(path=RULES_FILE):
     rules = yaml.safe_load(Path(path).read_text())
     for rule in rules:
         match = dict(rule["match"])

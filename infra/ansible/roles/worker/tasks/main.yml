@@ -48,9 +48,9 @@
 
 - name: Read the control plane credentials
   ansible.builtin.command: >
-    /usr/local/bin/k3s kubectl -n {{ control_plane_namespace }}
+    /usr/local/bin/k3s kubectl -n {{ worker_control_plane_namespace }}
     get secret detonator-credentials -o json
-  register: k8s_secret
+  register: worker_k8s_secret
   changed_when: false
   no_log: true
 
@@ -73,7 +73,7 @@
 
 - name: Find the sandbox VMs
   ansible.builtin.command: virsh -c qemu:///system list --all --name
-  register: virsh_list
+  register: worker_virsh_list
   changed_when: false
 
 - name: Run one worker per sandbox VM
@@ -82,4 +82,4 @@
     enabled: true
     state: started
     daemon_reload: true
-  loop: "{{ virsh_list.stdout_lines | select('match', '^sbx-linux-') | list }}"
+  loop: "{{ worker_virsh_list.stdout_lines | select('match', '^sbx-linux-') | list }}"

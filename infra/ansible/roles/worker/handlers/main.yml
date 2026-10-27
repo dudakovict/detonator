@@ -3,4 +3,4 @@
     name: "detonator-worker@{{ item }}.service"
     state: restarted
     daemon_reload: true
-  loop: "{{ virsh_list.stdout_lines | select('match', '^sbx-linux-') | list }}"
+  loop: "{{ worker_virsh_list.stdout_lines | select('match', '^sbx-linux-') | list }}"

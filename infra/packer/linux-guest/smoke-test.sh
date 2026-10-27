@@ -18,7 +18,7 @@ trap cleanup EXIT
 qemu-img create -q -f qcow2 -F qcow2 -b "$(readlink -f "$BASE")" "$tmp/disk.qcow2"
 # restrict=on: the guest can reach nothing (no host, no internet); only the
 # forwarded agent port is reachable, from the node's localhost.
-/usr/libexec/qemu-kvm -machine q35,accel=kvm -cpu host -m 1024 -smp 1 -display none \
+/usr/libexec/qemu-kvm -machine q35,accel=kvm -cpu host -m 512 -smp 1 -display none \
   -drive file="$tmp/disk.qcow2",if=virtio \
   -netdev "user,id=n0,restrict=on,hostfwd=tcp:127.0.0.1:$PORT-:8000" \
   -device virtio-net-pci,netdev=n0 \

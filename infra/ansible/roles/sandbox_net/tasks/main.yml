@@ -2,7 +2,7 @@
 # and removing it means a VM can't be attached to it by mistake.
 - name: Check for libvirt's default NAT network
   ansible.builtin.command: virsh -c qemu:///system net-info default
-  register: default_net
+  register: sandbox_net_default_net
   failed_when: false
   changed_when: false
 
@@ -10,7 +10,7 @@
   ansible.builtin.shell: |
     virsh -c qemu:///system net-destroy default || true
     virsh -c qemu:///system net-undefine default
-  when: default_net.rc == 0
+  when: sandbox_net_default_net.rc == 0
   changed_when: true
 
 - name: Install nftables
@@ -50,14 +50,14 @@
 
 - name: Install the sinkhole
   ansible.builtin.copy:
-    src: "{{ sinkhole_src_dir }}/sinkhole.py"
+    src: "{{ sandbox_net_sinkhole_src_dir }}/sinkhole.py"
     dest: /opt/sinkhole/sinkhole.py
     mode: "0755"
   notify: Restart sinkhole
 
 - name: Install the sinkhole service
   ansible.builtin.copy:
-    src: "{{ sinkhole_src_dir }}/sinkhole.service"
+    src: "{{ sandbox_net_sinkhole_src_dir }}/sinkhole.service"
     dest: /etc/systemd/system/sinkhole.service
     mode: "0644"
   notify: Restart sinkhole

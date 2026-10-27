@@ -15,7 +15,7 @@ BASE_IMAGE = $$($(SSH) readlink /var/lib/libvirt/images/base/sbx-linux-latest.qc
 # Written by `make node`; used by kubectl and helm.
 export KUBECONFIG ?= $(HOME)/.kube/detonator.yaml
 
-.PHONY: help ssh node sync image image-test vms vms-destroy snapshot net-test deploy api-test worker e2e observability
+.PHONY: help ssh node sync image image-test vms vms-destroy snapshot net-test deploy api-test worker e2e observability runner
 
 help: ## List targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) \
@@ -77,3 +77,7 @@ observability: ## Install Prometheus, Alertmanager and Grafana on k3s (Helm)
 	helm dependency build deploy/helm/observability >/dev/null
 	helm upgrade --install observability deploy/helm/observability --namespace monitoring \
 	  --create-namespace --wait --timeout 10m
+
+runner: ## Install the self-hosted GitHub Actions runner on the node (Ansible)
+	cd infra/ansible && ansible-playbook runner.yml -e github_runner_token=$$(gh api -X POST \
+	  repos/dudakovict/detonator/actions/runners/registration-token -q .token)
