@@ -5,6 +5,7 @@
       - libvirt
       - virt-install
       - rsync
+      - tcpdump # the worker captures each sandbox VM's traffic
       - python3.12
       - python3.12-pip
     state: present

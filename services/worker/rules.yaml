@@ -1,0 +1,52 @@
+# Behaviour rules. Score ≥ 60 → malicious, ≥ 25 → suspicious, otherwise clean.
+# match: an event type plus regular expressions for the event's fields.
+
+- id: persistence_crontab
+  description: Installs a crontab entry (persistence)
+  score: 40
+  match: {event: file_write, path: '^/var/spool/cron/'}
+
+- id: persistence_shell_profile
+  description: Modifies a shell startup file (persistence)
+  score: 40
+  match: {event: file_write, path: '(^/home/[^/]+/|^/root/)\.(bashrc|bash_profile|profile|zshrc)$|^/etc/profile'}
+
+- id: persistence_systemd
+  description: Creates a systemd unit (persistence)
+  score: 40
+  match: {event: file_write, path: '/systemd/(system|user)/[^/]+\.(service|timer)$'}
+
+- id: drops_executable
+  description: Makes a file executable
+  score: 20
+  match: {event: chmod_exec, path: '.'}
+
+- id: executes_dropped_file
+  description: Runs a file it wrote itself
+  score: 20
+  match: {event: process, dropped: '^true$'}
+
+- id: reads_account_database
+  description: Reads local account databases (reconnaissance)
+  score: 15
+  match: {event: file_read, path: '^/etc/(passwd|shadow|group|sudoers)$'}
+
+- id: resolves_domain
+  description: Resolves a domain name
+  score: 10
+  match: {event: dns, name: '.'}
+
+- id: http_post
+  description: Sends data with an HTTP POST (beaconing or exfiltration)
+  score: 25
+  match: {event: http, method: '^POST$'}
+
+- id: direct_ip_connection
+  description: Connects to a hard-coded IP address instead of a resolved name
+  score: 20
+  match: {event: connect, dst: '^(?!10\.66\.0\.1$)'}
+
+- id: downloader_tool
+  description: Runs a download tool
+  score: 15
+  match: {event: process, exe: '/(curl|wget|nc|ncat|socat)$'}

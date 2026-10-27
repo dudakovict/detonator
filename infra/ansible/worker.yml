@@ -1,0 +1,7 @@
+# Separate from node.yml: the worker needs the control plane's credentials, so
+# it can only be installed after `make deploy` has created them.
+- name: Install the detonation workers
+  hosts: sandbox_nodes
+  become: true
+  roles:
+    - worker

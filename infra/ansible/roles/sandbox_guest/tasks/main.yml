@@ -18,6 +18,19 @@
     masked: true
   loop: [apt-daily.timer, apt-daily-upgrade.timer]
 
+# Anything the OS sends by itself lands in the sinkhole log and would be blamed
+# on the sample (seen: ntp.ubuntu.com, api.snapcraft.io). Keep the baseline quiet.
+- name: Remove snapd
+  ansible.builtin.apt:
+    name: [snapd]
+    state: absent
+    purge: true
+
+- name: Mask services and timers that phone home
+  ansible.builtin.command: systemctl mask {{ item }}
+  loop: [systemd-timesyncd.service, motd-news.timer, fwupd-refresh.timer, ua-timer.timer]
+  changed_when: true
+
 - name: Create the user samples run as
   ansible.builtin.user:
     name: "{{ sample_user }}"

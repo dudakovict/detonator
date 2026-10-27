@@ -1,0 +1,85 @@
+- name: Create the worker user
+  ansible.builtin.user:
+    name: detonator
+    system: true
+    groups: [libvirt] # drive the sandbox VMs through virsh
+    append: true
+    shell: /sbin/nologin
+    create_home: false
+
+- name: Create the worker directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: detonator
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ worker_dir }}", owner: root, mode: "0755"}
+    - {path: /etc/detonator, owner: root, mode: "0750"}
+    - {path: /var/lib/detonator-worker, owner: detonator, mode: "0750"} # per-job scratch space
+
+- name: Create the worker virtualenv
+  ansible.builtin.command: python3.12 -m venv {{ worker_dir }}/venv
+  args:
+    creates: "{{ worker_dir }}/venv/bin/python"
+  register: worker_venv
+
+- name: Install the worker's Python dependencies
+  ansible.builtin.copy:
+    src: "{{ worker_src_dir }}/requirements.txt"
+    dest: "{{ worker_dir }}/requirements.txt"
+    mode: "0644"
+  register: worker_requirements
+
+- name: Install the pinned packages
+  ansible.builtin.command: "{{ worker_dir }}/venv/bin/pip install -r {{ worker_dir }}/requirements.txt"
+  when: worker_requirements.changed or worker_venv.changed
+  changed_when: true
+  notify: Restart workers
+
+- name: Install the worker code and rules
+  ansible.builtin.copy:
+    src: "{{ worker_src_dir }}/{{ item }}"
+    dest: "{{ worker_dir }}/{{ item }}"
+    mode: "0644"
+  loop: [worker.py, analysis.py, rules.py, rules.yaml]
+  notify: Restart workers
+
+- name: Read the control plane credentials
+  ansible.builtin.command: >
+    /usr/local/bin/k3s kubectl -n {{ control_plane_namespace }}
+    get secret detonator-credentials -o json
+  register: k8s_secret
+  changed_when: false
+  no_log: true
+
+- name: Write the worker's environment file
+  ansible.builtin.template:
+    src: worker.env.j2
+    dest: /etc/detonator/worker.env
+    owner: root
+    group: detonator
+    mode: "0640"
+  no_log: true
+  notify: Restart workers
+
+- name: Install the worker service template
+  ansible.builtin.copy:
+    src: "{{ worker_src_dir }}/detonator-worker@.service"
+    dest: /etc/systemd/system/detonator-worker@.service
+    mode: "0644"
+  notify: Restart workers
+
+- name: Find the sandbox VMs
+  ansible.builtin.command: virsh -c qemu:///system list --all --name
+  register: virsh_list
+  changed_when: false
+
+- name: Run one worker per sandbox VM
+  ansible.builtin.systemd_service:
+    name: "detonator-worker@{{ item }}.service"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop: "{{ virsh_list.stdout_lines | select('match', '^sbx-linux-') | list }}"

@@ -44,9 +44,18 @@ resource "libvirt_network" "isolated" {
   }]
 }
 
+# Tracks the golden image, so a new image replaces disks and VMs instead of
+# attempting an in-place update (a disk's backing file can't be swapped).
+resource "terraform_data" "image" {
+  input = var.base_image
+}
+
 # Each VM's disk is a thin overlay on the read-only golden image.
 resource "libvirt_volume" "disk" {
   for_each = local.vms
+  lifecycle {
+    replace_triggered_by = [terraform_data.image]
+  }
 
   name     = "${each.key}.qcow2"
   pool     = libvirt_pool.sbx.name
@@ -62,6 +71,9 @@ resource "libvirt_volume" "disk" {
 
 resource "libvirt_domain" "vm" {
   for_each = local.vms
+  lifecycle {
+    replace_triggered_by = [libvirt_volume.disk[each.key]]
+  }
 
   name        = each.key
   type        = "kvm"

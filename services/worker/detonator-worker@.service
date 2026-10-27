@@ -1,0 +1,22 @@
+# One instance per sandbox VM: systemctl start detonator-worker@sbx-linux-01
+[Unit]
+Description=Detonation worker for sandbox VM %i
+After=network-online.target libvirtd.service virtqemud.socket
+Wants=network-online.target
+
+[Service]
+User=detonator
+Group=detonator
+EnvironmentFile=/etc/detonator/worker.env
+ExecStart=/opt/detonator-worker/venv/bin/python /opt/detonator-worker/worker.py %i
+Restart=always
+RestartSec=5
+# Packet capture on the VM's tap device; passed on to tcpdump.
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

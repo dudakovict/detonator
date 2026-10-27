@@ -15,10 +15,10 @@ BASE_IMAGE = $$($(SSH) readlink /var/lib/libvirt/images/base/sbx-linux-latest.qc
 # Written by `make node`; used by kubectl and helm.
 export KUBECONFIG ?= $(HOME)/.kube/detonator.yaml
 
-.PHONY: help ssh node sync image image-test vms vms-destroy snapshot net-test deploy api-test
+.PHONY: help ssh node sync image image-test vms vms-destroy snapshot net-test deploy api-test worker e2e
 
 help: ## List targets
-	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) \
+	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) \
 	  | awk 'BEGIN {FS = ":.*## "} {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
 ssh: ## Open a shell on the sandbox node
@@ -66,3 +66,9 @@ deploy: ## Build the API image, load it into k3s and install/upgrade the Helm re
 
 api-test: ## Submit a harmless sample to the API and check it was stored and queued
 	scripts/api-test.sh http://$(SBX_HOST):30080
+
+worker: ## Install the detonation workers on the node, one per sandbox VM (Ansible)
+	cd infra/ansible && ansible-playbook worker.yml
+
+e2e: ## Submit the benign samples and check their verdicts and IOCs end to end
+	scripts/e2e.sh http://$(SBX_HOST):30080

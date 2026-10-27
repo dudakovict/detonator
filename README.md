@@ -41,12 +41,12 @@ and monitored.
 
 ### Analysis pipeline (per job)
 
-1. Worker receives a job from RabbitMQ (it only prefetches as many as it has free VMs).
-2. Pick a free VM; `virsh snapshot-revert <vm> clean` (live snapshot, no cold boot).
+1. A worker receives a job from RabbitMQ. There is one worker per sandbox VM, each taking one job at a time.
+2. Revert its VM: `virsh snapshot-revert <vm> clean` (live snapshot, no cold boot).
 3. Start `tcpdump` on the VM's network interface.
 4. Agent `POST /upload`, then `POST /execute` (runs under `strace -ff`, hard timeout).
 5. Fetch results (syscall traces, file-system diff, dropped files).
-6. Stop capture; parse the pcap with `tshark` (DNS, HTTP, TCP).
+6. Stop capture; parse the pcap (connection attempts) and the sinkhole log (DNS, HTTP).
 7. Normalise into a report; extract IOCs (domains, IPs, URLs, dropped-file hashes).
 8. Apply YAML behaviour rules → score → verdict (`clean` / `suspicious` / `malicious`).
 9. Store artifacts and report in object storage, verdict and IOCs in Postgres.
@@ -70,8 +70,8 @@ and monitored.
 | 2 | Golden guest image (Packer + Ansible) + guest agent | ✅ |
 | 3 | Isolated network + VM pool (Terraform + Ansible) | ✅ |
 | 4 | Control plane on k3s (Helm): API, Postgres, RabbitMQ, object storage | ✅ |
-| 5 | Worker / orchestrator: detonation, parsing, IOCs, verdicts | ⏳ |
-| 6 | Observability: Prometheus/Grafana metrics, ELK logs, alerts, runbooks | |
+| 5 | Worker / orchestrator: detonation, parsing, IOCs, verdicts | ✅ |
+| 6 | Observability: Prometheus/Grafana metrics, ELK logs, alerts, runbooks | ⏳ |
 | 7 | CI/CD: build, scan, deploy, end-to-end tests | |
 
 ## Getting started
@@ -93,4 +93,6 @@ make snapshot    # take each VM's "clean" snapshot
 make net-test    # prove from inside a VM that the network is isolated
 make deploy      # build the API image and install the control plane on k3s (Helm)
 make api-test    # submit a harmless sample and check it was stored and queued
+make worker      # install the detonation workers on the node (Ansible)
+make e2e         # analyse the benign samples end to end and check their verdicts
 ```
