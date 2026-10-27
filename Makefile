@@ -12,8 +12,10 @@ TF  := terraform -chdir=infra/terraform
 TF_ARGS ?=
 # The golden image the VMs are built from: whatever sbx-linux-latest points to.
 BASE_IMAGE = $$($(SSH) readlink /var/lib/libvirt/images/base/sbx-linux-latest.qcow2)
+# Written by `make node`; used by kubectl and helm.
+export KUBECONFIG ?= $(HOME)/.kube/detonator.yaml
 
-.PHONY: help ssh node sync image image-test vms vms-destroy snapshot net-test
+.PHONY: help ssh node sync image image-test vms vms-destroy snapshot net-test deploy api-test
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) \
@@ -50,3 +52,17 @@ snapshot: sync ## Take the "clean" snapshot of every sandbox VM
 
 net-test: sync ## Prove from inside a VM that the network is isolated and sinkholed
 	$(SSH) $(NODE_DIR)/scripts/net-test.sh
+
+# The image is tagged with its own content ID (provenance off, so identical
+# inputs give an identical ID): a changed image always gets a
+# new tag and Kubernetes rolls the Deployment; an unchanged one is a no-op.
+deploy: ## Build the API image, load it into k3s and install/upgrade the Helm release
+	docker build -q --provenance=false -t detonator-api:build services/api >/dev/null
+	tag=$$(docker image inspect -f '{{.Id}}' detonator-api:build | cut -c8-19) && \
+	docker tag detonator-api:build detonator-api:$$tag && \
+	docker save detonator-api:$$tag | $(SSH) sudo /usr/local/bin/k3s ctr -n k8s.io images import - >/dev/null && \
+	helm upgrade --install detonator deploy/helm/detonator --namespace detonator \
+	  --create-namespace --wait --timeout 5m --set api.image.tag=$$tag
+
+api-test: ## Submit a harmless sample to the API and check it was stored and queued
+	scripts/api-test.sh http://$(SBX_HOST):30080

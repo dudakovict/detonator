@@ -1,0 +1,5 @@
+apiVersion: v2
+name: detonator
+description: Control plane of the detonator sandbox - API, Postgres, RabbitMQ and S3 object storage.
+type: application
+version: 0.1.0

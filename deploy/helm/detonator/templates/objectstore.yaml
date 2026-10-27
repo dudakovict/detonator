@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: objectstore
+  labels:
+    {{- include "detonator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: objectstore
+spec:
+  type: NodePort
+  selector:
+    {{- include "detonator.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: objectstore
+  ports:
+    - name: s3
+      port: 8333
+      nodePort: {{ .Values.objectStore.nodePort }}
+---
+# SeaweedFS in single-process mode: master, volume server, filer and the S3
+# gateway in one container.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: objectstore
+  labels:
+    {{- include "detonator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: objectstore
+spec:
+  serviceName: objectstore
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "detonator.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: objectstore
+  template:
+    metadata:
+      labels:
+        {{- include "detonator.labels" . | nindent 8 }}
+        app.kubernetes.io/component: objectstore
+    spec:
+      containers:
+        - name: seaweedfs
+          image: {{ .Values.objectStore.image }}
+          command: [weed]
+          args:
+            - server
+            - -dir=/data
+            - -s3
+            - -s3.config=/etc/seaweedfs/s3.json
+            - -master.volumeSizeLimitMB=256
+            - -volume.max=0
+          ports:
+            - containerPort: 8333
+          readinessProbe:
+            tcpSocket:
+              port: 8333
+            periodSeconds: 10
+          resources: {{- toYaml .Values.objectStore.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: s3-config
+              mountPath: /etc/seaweedfs
+              readOnly: true
+      volumes:
+        - name: s3-config
+          secret:
+            secretName: objectstore-s3-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: {{ .Values.objectStore.storage }}

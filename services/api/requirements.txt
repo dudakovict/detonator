@@ -1,0 +1,7 @@
+boto3==1.43.119
+fastapi==0.162.0
+pika==1.4.4
+prometheus-client==0.26.0
+psycopg[binary]==3.3.6
+python-multipart==0.0.32
+uvicorn==0.54.0

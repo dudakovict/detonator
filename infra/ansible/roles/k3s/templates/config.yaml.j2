@@ -1,0 +1,13 @@
+# Managed by Ansible.
+node-ip: {{ k3s_node_ip }}
+tls-san:
+  - {{ k3s_node_ip }}
+write-kubeconfig-mode: "0600"
+# No Traefik or ServiceLB: they publish ports 80/443 on every node address,
+# including 10.66.0.1 where the sinkhole lives. The API uses a NodePort instead.
+disable:
+  - traefik
+  - servicelb
+  - metrics-server
+kube-proxy-arg:
+  - nodeport-addresses={{ k3s_node_ip }}/32

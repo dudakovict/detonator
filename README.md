@@ -19,7 +19,7 @@ and monitored.
  workstation ── git, Terraform, Ansible, Packer, kubectl, Helm
       │ SSH / kubectl / Ansible
  sandbox node / Rocky Linux 9 + KVM
-  ├── k3s ── API · Postgres · RabbitMQ · MinIO · Prometheus · Grafana · ELK
+  ├── k3s ── API · Postgres · RabbitMQ · SeaweedFS (S3) · Prometheus · Grafana · ELK
   └── worker (systemd) ── libvirt / KVM
        └── isolated network (no egress, sinkhole DNS/HTTP)
             ├── sandbox VM 1   ← reverted to a clean snapshot after every job
@@ -30,10 +30,10 @@ and monitored.
 
 | Component | Runs on | Responsibility |
 |---|---|---|
-| API (FastAPI) | k3s | Accept samples, dedupe by SHA-256, store in MinIO, enqueue, serve status/reports |
+| API (FastAPI) | k3s | Accept samples, dedupe by SHA-256, store in object storage, enqueue, serve status/reports |
 | Postgres | k3s | Job metadata, verdicts, IOCs |
 | RabbitMQ | k3s | Job queue (manual acks, prefetch = free VMs, dead-letter queue) |
-| MinIO | k3s | S3-compatible storage for samples, artifacts and reports |
+| SeaweedFS | k3s | S3-compatible object storage for samples, artifacts and reports |
 | Worker | sandbox node (systemd) | Pull jobs, drive VMs via libvirt, capture, parse, score, report |
 | Guest agent | inside each sandbox VM | Receive sample, execute under tracing, return results |
 | Sinkhole | sandbox node | Answer all DNS with the host IP; log HTTP requests ("fake internet") |
@@ -49,7 +49,7 @@ and monitored.
 6. Stop capture; parse the pcap with `tshark` (DNS, HTTP, TCP).
 7. Normalise into a report; extract IOCs (domains, IPs, URLs, dropped-file hashes).
 8. Apply YAML behaviour rules → score → verdict (`clean` / `suspicious` / `malicious`).
-9. Store artifacts and report in MinIO, verdict and IOCs in Postgres.
+9. Store artifacts and report in object storage, verdict and IOCs in Postgres.
 10. Ack the message, revert the VM.
 
 ## Tooling
@@ -58,7 +58,7 @@ and monitored.
 |---|---|
 | Virtualization | KVM, QEMU, libvirt on Rocky Linux 9 |
 | Images & infrastructure | Packer, Terraform (libvirt provider), Ansible (+ Molecule) |
-| Platform | k3s, Helm, Docker, Python (FastAPI), Postgres, RabbitMQ, MinIO |
+| Platform | k3s, Helm, Docker, Python (FastAPI), Postgres, RabbitMQ, SeaweedFS (S3) |
 | CI/CD | GitHub Actions (hosted + one self-hosted runner), GHCR, Trivy, gitleaks |
 | Observability | Prometheus, Alertmanager, Grafana, ELK (Elasticsearch, Kibana, Filebeat), Redash |
 
@@ -69,8 +69,8 @@ and monitored.
 | 1 | Repo skeleton, README, CI (secret scan) | ✅ |
 | 2 | Golden guest image (Packer + Ansible) + guest agent | ✅ |
 | 3 | Isolated network + VM pool (Terraform + Ansible) | ✅ |
-| 4 | Control plane on k3s (Helm): API, Postgres, RabbitMQ, MinIO | ⏳ |
-| 5 | Worker / orchestrator: detonation, parsing, IOCs, verdicts | |
+| 4 | Control plane on k3s (Helm): API, Postgres, RabbitMQ, object storage | ✅ |
+| 5 | Worker / orchestrator: detonation, parsing, IOCs, verdicts | ⏳ |
 | 6 | Observability: Prometheus/Grafana metrics, ELK logs, alerts, runbooks | |
 | 7 | CI/CD: build, scan, deploy, end-to-end tests | |
 
@@ -91,4 +91,6 @@ make image-test  # boot the image once and run a harmless sample through the age
 make vms         # create the isolated network and sandbox VMs (Terraform)
 make snapshot    # take each VM's "clean" snapshot
 make net-test    # prove from inside a VM that the network is isolated
+make deploy      # build the API image and install the control plane on k3s (Helm)
+make api-test    # submit a harmless sample and check it was stored and queued
 ```

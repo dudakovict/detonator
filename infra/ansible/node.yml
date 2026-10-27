@@ -4,3 +4,4 @@
   roles:
     - kvm_host
     - sandbox_net
+    - k3s

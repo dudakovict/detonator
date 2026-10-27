@@ -1,0 +1,6 @@
+k3s_version: v1.36.5+k3s1
+# The only address Kubernetes publishes Services on. Keeping NodePorts off
+# 10.66.0.1 means sandbox VMs can never reach the control plane through them.
+k3s_node_ip: "{{ ansible_host }}"
+# Where the workstation's kubeconfig for this cluster is written.
+kubeconfig_dest: ~/.kube/detonator.yaml

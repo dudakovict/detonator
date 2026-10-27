@@ -31,6 +31,10 @@ def check(name, fn):
 check("tcp 1.1.1.1:443", lambda: socket.create_connection(("1.1.1.1", 443), timeout=3) and "connected")
 check("tcp node 192.168.200.10:22", lambda: socket.create_connection(("192.168.200.10", 22), timeout=3) and "connected")
 check("tcp sink 10.66.0.1:22", lambda: socket.create_connection(("10.66.0.1", 22), timeout=3) and "connected")
+check("tcp k8s 10.66.0.1:6443", lambda: socket.create_connection(("10.66.0.1", 6443), timeout=3) and "connected")
+check("tcp k8s 192.168.200.10:6443", lambda: socket.create_connection(("192.168.200.10", 6443), timeout=3) and "connected")
+check("tcp api 10.66.0.1:30080", lambda: socket.create_connection(("10.66.0.1", 30080), timeout=3) and "connected")
+check("tcp api 192.168.200.10:30080", lambda: socket.create_connection(("192.168.200.10", 30080), timeout=3) and "connected")
 check("dns evil-c2.example", lambda: socket.gethostbyname("evil-c2.example"))
 check("http evil-c2.example", lambda: urllib.request.urlopen("http://evil-c2.example/$marker", timeout=5).status)
 EOF
@@ -48,6 +52,10 @@ expect() {
 expect "tcp 1.1.1.1:443 -> blocked" "no route to the internet"
 expect "tcp node 192.168.200.10:22 -> blocked" "node's other addresses unreachable"
 expect "tcp sink 10.66.0.1:22 -> blocked" "only DNS/HTTP allowed on the sinkhole IP"
+expect "tcp k8s 10.66.0.1:6443 -> blocked" "Kubernetes API unreachable via 10.66.0.1"
+expect "tcp k8s 192.168.200.10:6443 -> blocked" "Kubernetes API unreachable via 192.168.200.10"
+expect "tcp api 10.66.0.1:30080 -> blocked" "API NodePort unreachable via 10.66.0.1"
+expect "tcp api 192.168.200.10:30080 -> blocked" "API NodePort unreachable via 192.168.200.10"
 expect "dns evil-c2.example -> 10.66.0.1" "every name resolves to the sinkhole"
 expect "http evil-c2.example -> 200" "HTTP answered by the sinkhole"
 if grep -qF "\"path\": \"/$marker\"" "$SINK_LOG"; then

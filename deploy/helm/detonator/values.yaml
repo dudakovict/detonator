@@ -1,0 +1,38 @@
+# NodePorts are published only on the node's 192.168.200.10 (see the k3s role),
+# never on the sandbox network. The worker on the node reaches the backing
+# services through them; the workstation reaches the API.
+
+api:
+  image:
+    repository: detonator-api
+    tag: "" # set by `make deploy` to the image's content ID
+  nodePort: 30080
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 256Mi}
+
+postgres:
+  image: postgres:18.6-alpine
+  storage: 2Gi
+  nodePort: 30432
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 256Mi}
+
+rabbitmq:
+  image: rabbitmq:4.3.7-management-alpine
+  storage: 1Gi
+  nodePort: 30672
+  managementNodePort: 31672
+  resources:
+    requests: {cpu: 50m, memory: 256Mi}
+    limits: {memory: 512Mi}
+
+# S3-compatible object storage for samples, artifacts and reports.
+objectStore:
+  image: chrislusf/seaweedfs:4.51
+  storage: 10Gi
+  nodePort: 30333
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 384Mi}
