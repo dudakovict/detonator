@@ -1,0 +1,70 @@
+# libvirt's default network NATs guests to the internet. Nothing here uses it,
+# and removing it means a VM can't be attached to it by mistake.
+- name: Check for libvirt's default NAT network
+  ansible.builtin.command: virsh -c qemu:///system net-info default
+  register: default_net
+  failed_when: false
+  changed_when: false
+
+- name: Remove libvirt's default NAT network
+  ansible.builtin.shell: |
+    virsh -c qemu:///system net-destroy default || true
+    virsh -c qemu:///system net-undefine default
+  when: default_net.rc == 0
+  changed_when: true
+
+- name: Install nftables
+  ansible.builtin.dnf:
+    name: nftables
+    state: present
+
+- name: Install the sandbox firewall rules
+  ansible.builtin.template:
+    src: sandbox.nft.j2
+    dest: /etc/nftables/sandbox.nft
+    mode: "0644"
+  notify: Load sandbox firewall rules
+
+- name: Load the sandbox rules at boot
+  ansible.builtin.lineinfile:
+    path: /etc/sysconfig/nftables.conf
+    line: include "/etc/nftables/sandbox.nft"
+
+- name: Enable nftables at boot
+  ansible.builtin.systemd_service:
+    name: nftables.service
+    enabled: true
+
+- name: Create the sinkhole user
+  ansible.builtin.user:
+    name: sinkhole
+    system: true
+    shell: /sbin/nologin
+    create_home: false
+
+- name: Create the sinkhole directory
+  ansible.builtin.file:
+    path: /opt/sinkhole
+    state: directory
+    mode: "0755"
+
+- name: Install the sinkhole
+  ansible.builtin.copy:
+    src: "{{ sinkhole_src_dir }}/sinkhole.py"
+    dest: /opt/sinkhole/sinkhole.py
+    mode: "0755"
+  notify: Restart sinkhole
+
+- name: Install the sinkhole service
+  ansible.builtin.copy:
+    src: "{{ sinkhole_src_dir }}/sinkhole.service"
+    dest: /etc/systemd/system/sinkhole.service
+    mode: "0644"
+  notify: Restart sinkhole
+
+- name: Enable and start the sinkhole
+  ansible.builtin.systemd_service:
+    name: sinkhole.service
+    enabled: true
+    state: started
+    daemon_reload: true

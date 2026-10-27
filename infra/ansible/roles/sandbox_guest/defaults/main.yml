@@ -1,4 +1,5 @@
 # The account samples run as. A plain personal-looking name, because some malware
 # checks for usernames like "sandbox" or "malware" and stays dormant.
 sample_user: alex
+sandbox_dns: 10.66.0.1 # the sinkhole on the sandbox node
 agent_src_dir: "{{ playbook_dir }}/../../services/guest-agent"

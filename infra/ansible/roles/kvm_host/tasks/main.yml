@@ -39,11 +39,14 @@
     groups: [libvirt, kvm]
     append: true
 
-- name: Create the base image directory
+- name: Create the image directories
   ansible.builtin.file:
-    path: "{{ base_image_dir }}"
+    path: "{{ item }}"
     state: directory
     mode: "0755"
+  loop:
+    - "{{ base_image_dir }}" # golden images
+    - "{{ vm_disk_dir }}" # per-VM overlay disks (libvirt pool "sbx")
 
 - name: Create a virtualenv for ansible-core
   ansible.builtin.command: python3.12 -m venv /opt/ansible

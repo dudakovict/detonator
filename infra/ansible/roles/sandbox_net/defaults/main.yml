@@ -1,0 +1,4 @@
+# Must match the libvirt network in infra/terraform.
+sandbox_bridge: virbr-sbx
+sink_ip: 10.66.0.1
+sinkhole_src_dir: "{{ playbook_dir }}/../../services/sinkhole"

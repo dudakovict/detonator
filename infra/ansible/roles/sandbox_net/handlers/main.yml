@@ -1,0 +1,11 @@
+# Load the file directly instead of restarting nftables.service: a restart
+# flushes the whole ruleset, including libvirt's own rules.
+- name: Load sandbox firewall rules
+  ansible.builtin.command: nft -f /etc/nftables/sandbox.nft
+  changed_when: true
+
+- name: Restart sinkhole
+  ansible.builtin.systemd_service:
+    name: sinkhole.service
+    state: restarted
+    daemon_reload: true

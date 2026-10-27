@@ -68,8 +68,8 @@ and monitored.
 |---|---|---|
 | 1 | Repo skeleton, README, CI (secret scan) | ✅ |
 | 2 | Golden guest image (Packer + Ansible) + guest agent | ✅ |
-| 3 | Isolated network + VM pool (Terraform + Ansible) | ⏳ |
-| 4 | Control plane on k3s (Helm): API, Postgres, RabbitMQ, MinIO | |
+| 3 | Isolated network + VM pool (Terraform + Ansible) | ✅ |
+| 4 | Control plane on k3s (Helm): API, Postgres, RabbitMQ, MinIO | ⏳ |
 | 5 | Worker / orchestrator: detonation, parsing, IOCs, verdicts | |
 | 6 | Observability: Prometheus/Grafana metrics, ELK logs, alerts, runbooks | |
 | 7 | CI/CD: build, scan, deploy, end-to-end tests | |
@@ -85,7 +85,10 @@ Prerequisites:
 ```bash
 make help        # list available targets
 make ssh         # log in to the sandbox node (SBX_HOST, SSH_KEY to override)
-make node        # install KVM, libvirt and Packer on the node (Ansible)
+make node        # configure the node: KVM, libvirt, Packer, firewall, sinkhole (Ansible)
 make image       # build the guest image on the node (Packer + Ansible)
 make image-test  # boot the image once and run a harmless sample through the agent
+make vms         # create the isolated network and sandbox VMs (Terraform)
+make snapshot    # take each VM's "clean" snapshot
+make net-test    # prove from inside a VM that the network is isolated
 ```
