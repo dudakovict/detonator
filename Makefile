@@ -74,6 +74,8 @@ e2e: ## Submit the benign samples and check their verdicts and IOCs end to end
 	scripts/e2e.sh http://$(SBX_HOST):30080
 
 observability: ## Install Prometheus, Alertmanager and Grafana on k3s (Helm)
+	helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null
+	helm repo add grafana https://grafana.github.io/helm-charts >/dev/null
 	helm dependency build deploy/helm/observability >/dev/null
 	helm upgrade --install observability deploy/helm/observability --namespace monitoring \
 	  --create-namespace --wait --timeout 10m
