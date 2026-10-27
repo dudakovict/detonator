@@ -25,6 +25,9 @@ metadata:
     app.kubernetes.io/component: api
 spec:
   replicas: 1
+  # Start the new pod and wait until it's ready before stopping the old one.
+  strategy:
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
   selector:
     matchLabels:
       {{- include "detonator.selectorLabels" . | nindent 6 }}
@@ -67,6 +70,11 @@ spec:
                 secretKeyRef: {name: detonator-credentials, key: s3-secret-key}
           ports:
             - containerPort: 8000
+          # Keep serving a few seconds after removal from the Service, until
+          # every node's routing has caught up.
+          lifecycle:
+            preStop:
+              sleep: {seconds: 5}
           readinessProbe:
             httpGet: {path: /healthz, port: 8000}
             periodSeconds: 10
