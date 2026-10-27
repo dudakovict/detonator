@@ -3,6 +3,12 @@ FROM python:3.13.13-slim-trixie
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 
+# The base image lags behind Debian's security fixes (OpenSSL, util-linux, ...);
+# apply them at build time so the image scan in CI passes.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
