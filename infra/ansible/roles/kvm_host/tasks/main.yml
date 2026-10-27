@@ -1,0 +1,56 @@
+- name: Install virtualization and image-build packages
+  ansible.builtin.dnf:
+    name:
+      - qemu-kvm
+      - libvirt
+      - virt-install
+      - rsync
+      - python3.12
+      - python3.12-pip
+    state: present
+
+- name: Add the HashiCorp repository
+  ansible.builtin.yum_repository:
+    name: hashicorp
+    description: HashiCorp Stable - $basearch
+    baseurl: https://rpm.releases.hashicorp.com/RHEL/$releasever/$basearch/stable
+    gpgcheck: true
+    gpgkey: https://rpm.releases.hashicorp.com/gpg
+
+- name: Install Packer
+  ansible.builtin.dnf:
+    name: "packer-{{ packer_version }}"
+    state: present
+
+- name: Enable the libvirt daemons
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - virtqemud.socket
+    - virtnetworkd.socket
+    - virtstoraged.socket
+    - virtnodedevd.socket
+
+- name: Let the admin user manage VMs without sudo
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: [libvirt, kvm]
+    append: true
+
+- name: Create the base image directory
+  ansible.builtin.file:
+    path: "{{ base_image_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Create a virtualenv for ansible-core
+  ansible.builtin.command: python3.12 -m venv /opt/ansible
+  args:
+    creates: /opt/ansible/bin/python
+
+- name: Install ansible-core for Packer's Ansible provisioner
+  ansible.builtin.command: /opt/ansible/bin/pip install "ansible-core=={{ ansible_core_version }}"
+  register: pip_ansible
+  changed_when: "'Successfully installed' in pip_ansible.stdout"

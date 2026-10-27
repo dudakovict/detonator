@@ -1,0 +1,5 @@
+- name: Configure sandbox nodes
+  hosts: sandbox_nodes
+  become: true
+  roles:
+    - kvm_host

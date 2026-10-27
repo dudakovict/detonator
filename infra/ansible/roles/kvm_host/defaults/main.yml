@@ -1,0 +1,4 @@
+packer_version: 1.16.2
+# Packer's Ansible provisioner runs this, so it must support the guest's Python 3.12.
+ansible_core_version: 2.20.1
+base_image_dir: /var/lib/libvirt/images/base

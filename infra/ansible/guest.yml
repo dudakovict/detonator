@@ -1,0 +1,8 @@
+# Run by Packer's Ansible provisioner against the guest image being built.
+# "default" is the host name Packer gives the build VM; it matches nothing in
+# inventory.yml, so running this by hand can't touch the sandbox node.
+- name: Configure the sandbox guest image
+  hosts: default
+  become: true
+  roles:
+    - sandbox_guest

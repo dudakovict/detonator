@@ -12,3 +12,7 @@ __pycache__/
 
 # Local Helm overrides (contain secrets)
 values-local.yaml
+
+# Packer
+packer_cache/
+output/

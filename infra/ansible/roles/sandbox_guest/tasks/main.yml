@@ -1,0 +1,107 @@
+- name: Install analysis tooling
+  ansible.builtin.apt:
+    name:
+      - strace
+      - cron # persistence via crontab is common behaviour worth observing
+    state: present
+    update_cache: true
+
+- name: Remove background updaters (noise in traces, no network in the sandbox anyway)
+  ansible.builtin.apt:
+    name: [unattended-upgrades]
+    state: absent
+    purge: true
+
+- name: Mask apt timers
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    masked: true
+  loop: [apt-daily.timer, apt-daily-upgrade.timer]
+
+- name: Create the user samples run as
+  ansible.builtin.user:
+    name: "{{ sample_user }}"
+    shell: /bin/bash
+    create_home: true
+
+- name: Create the guest agent directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop: [/opt/guest-agent, /etc/systemd/system/guest-agent.service.d]
+
+- name: Install the guest agent
+  ansible.builtin.copy:
+    src: "{{ agent_src_dir }}/agent.py"
+    dest: /opt/guest-agent/agent.py
+    mode: "0755"
+
+- name: Install the guest agent service
+  ansible.builtin.copy:
+    src: "{{ agent_src_dir }}/guest-agent.service"
+    dest: /etc/systemd/system/guest-agent.service
+    mode: "0644"
+
+- name: Configure the guest agent
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/guest-agent.service.d/override.conf
+    content: |
+      [Service]
+      Environment=AGENT_RUN_AS={{ sample_user }}
+    mode: "0644"
+
+- name: Enable the guest agent
+  ansible.builtin.systemd_service:
+    name: guest-agent.service
+    enabled: true
+    daemon_reload: true
+
+# cloud-init's network config matches the build VM's MAC address, so clones with a
+# different MAC would come up without network. Replace it with plain DHCP.
+- name: Configure DHCP on any Ethernet interface
+  ansible.builtin.copy:
+    dest: /etc/netplan/01-sandbox.yaml
+    content: |
+      network:
+        version: 2
+        ethernets:
+          any:
+            match: {name: "en*"}
+            dhcp4: true
+    mode: "0600"
+
+- name: Remove the cloud-init network config
+  ansible.builtin.file:
+    path: /etc/netplan/50-cloud-init.yaml
+    state: absent
+
+- name: Disable SSH in the final image (the agent is the only interface)
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+  loop: [ssh.socket, ssh.service]
+
+- name: Reset cloud-init state and logs
+  ansible.builtin.command: cloud-init clean --logs --seed
+  changed_when: true
+
+- name: Disable cloud-init (sandbox VMs need no first-boot configuration)
+  ansible.builtin.file:
+    path: /etc/cloud/cloud-init.disabled
+    state: touch
+    mode: "0644"
+
+- name: Remove per-machine identity, so every clone gets its own
+  ansible.builtin.shell: |
+    truncate -s 0 /etc/machine-id
+    rm -f /var/lib/dbus/machine-id /etc/ssh/ssh_host_*
+  changed_when: true
+
+- name: Clean package caches and logs
+  ansible.builtin.shell: |
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+    journalctl --rotate && journalctl --vacuum-time=1s
+    find /var/log -type f -name '*.log' -exec truncate -s 0 {} +
+  changed_when: true

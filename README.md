@@ -67,8 +67,8 @@ and monitored.
 | Milestone | Scope | Status |
 |---|---|---|
 | 1 | Repo skeleton, README, CI (secret scan) | ✅ |
-| 2 | Golden guest image (Packer + Ansible) + guest agent | ⏳ |
-| 3 | Isolated network + VM pool (Terraform + Ansible) | |
+| 2 | Golden guest image (Packer + Ansible) + guest agent | ✅ |
+| 3 | Isolated network + VM pool (Terraform + Ansible) | ⏳ |
 | 4 | Control plane on k3s (Helm): API, Postgres, RabbitMQ, MinIO | |
 | 5 | Worker / orchestrator: detonation, parsing, IOCs, verdicts | |
 | 6 | Observability: Prometheus/Grafana metrics, ELK logs, alerts, runbooks | |
@@ -85,4 +85,7 @@ Prerequisites:
 ```bash
 make help        # list available targets
 make ssh         # log in to the sandbox node (SBX_HOST, SSH_KEY to override)
+make node        # install KVM, libvirt and Packer on the node (Ansible)
+make image       # build the guest image on the node (Packer + Ansible)
+make image-test  # boot the image once and run a harmless sample through the agent
 ```

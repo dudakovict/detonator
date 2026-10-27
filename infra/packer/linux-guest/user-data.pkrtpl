@@ -1,0 +1,11 @@
+#cloud-config
+# Build-time only: gives Packer an SSH login. The user is deleted before the image
+# is saved, and cloud-init is disabled in the final image.
+users:
+  - name: packer
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+ssh_pwauth: false
