@@ -1,0 +1,5 @@
+- name: Restart the runner
+  ansible.builtin.shell: ./svc.sh stop && ./svc.sh start
+  args:
+    chdir: "{{ github_runner_dir }}"
+  changed_when: true

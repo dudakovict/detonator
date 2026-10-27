@@ -97,6 +97,17 @@
   become_user: github-runner
   no_log: true
 
+# The service otherwise gets /sbin:/bin:/usr/sbin:/usr/bin only, without the
+# helm and kubectl binaries in /usr/local/bin.
+- name: Set the runner's PATH
+  ansible.builtin.copy:
+    dest: "{{ github_runner_dir }}/.path"
+    content: "/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin\n"
+    owner: github-runner
+    group: github-runner
+    mode: "0644"
+  notify: Restart the runner
+
 - name: Install the runner service
   ansible.builtin.command: ./svc.sh install github-runner
   args:
