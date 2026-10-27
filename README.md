@@ -71,8 +71,8 @@ and monitored.
 | 3 | Isolated network + VM pool (Terraform + Ansible) | ✅ |
 | 4 | Control plane on k3s (Helm): API, Postgres, RabbitMQ, object storage | ✅ |
 | 5 | Worker / orchestrator: detonation, parsing, IOCs, verdicts | ✅ |
-| 6 | Observability: Prometheus/Grafana metrics, ELK logs, alerts, runbooks | ⏳ |
-| 7 | CI/CD: build, scan, deploy, end-to-end tests | |
+| 6 | Observability: Prometheus/Grafana metrics, ELK logs, alerts, runbooks | ✅ |
+| 7 | CI/CD: build, scan, deploy, end-to-end tests | ⏳ |
 
 ## Getting started
 
@@ -95,4 +95,16 @@ make deploy      # build the API image and install the control plane on k3s (Hel
 make api-test    # submit a harmless sample and check it was stored and queued
 make worker      # install the detonation workers on the node (Ansible)
 make e2e         # analyse the benign samples end to end and check their verdicts
+make observability  # Prometheus, Alertmanager, Grafana and ELK on k3s (Helm)
 ```
+
+## Observability
+
+| UI | URL | Login |
+|---|---|---|
+| Grafana (dashboards *Detonator - platform health*, *Detonator - analysis*) | http://192.168.200.10:30300 | `admin` / `kubectl -n monitoring get secret grafana -o jsonpath='{.data.admin-password}' \| base64 -d` |
+| Kibana (data view *Detonator logs*) | http://192.168.200.10:30561 | `elastic` / `kubectl -n monitoring get secret elk-credentials -o jsonpath='{.data.elastic-password}' \| base64 -d` |
+| Prometheus | http://192.168.200.10:30090 | none |
+| Alertmanager | http://192.168.200.10:30093 | none |
+
+Every alert links to its runbook in [docs/runbooks/](docs/runbooks/).

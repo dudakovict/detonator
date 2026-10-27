@@ -1,0 +1,152 @@
+# Upstream charts are configured under their names; NodePorts are published
+# only on the node's 192.168.200.10 (see the k3s role).
+
+prometheus:
+  server:
+    fullnameOverride: prometheus
+    retention: 7d
+    global:
+      scrape_interval: 30s
+      evaluation_interval: 30s
+    persistentVolume:
+      size: 4Gi
+    service:
+      type: NodePort
+      nodePort: 30090
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {memory: 512Mi}
+
+  alertmanager:
+    fullnameOverride: alertmanager
+    service:
+      type: NodePort
+      nodePort: 30093
+    persistence:
+      size: 64Mi
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {memory: 64Mi}
+
+  kube-state-metrics:
+    resources:
+      requests: {cpu: 10m, memory: 48Mi}
+      limits: {memory: 96Mi}
+  prometheus-node-exporter:
+    resources:
+      requests: {cpu: 10m, memory: 24Mi}
+      limits: {memory: 48Mi}
+  prometheus-pushgateway:
+    enabled: false
+
+  # API and RabbitMQ are found through their prometheus.io/* pod annotations
+  # (the chart's kubernetes-pods job). The workers run outside Kubernetes.
+  extraScrapeConfigs: |
+    - job_name: detonator-workers
+      static_configs:
+        - targets: ["192.168.200.10:9411", "192.168.200.10:9412"]
+
+  serverFiles:
+    alerting_rules.yml:
+      groups:
+        - name: detonator
+          rules:
+            - alert: WorkerDown
+              expr: up{job="detonator-workers"} == 0
+              for: 2m
+              labels: {severity: critical}
+              annotations:
+                summary: "Worker {{ $labels.instance }} is down; its sandbox VM takes no jobs"
+                runbook_url: https://github.com/dudakovict/detonator/blob/main/docs/runbooks/worker-down.md
+            - alert: ApiDown
+              expr: absent(up{job="kubernetes-pods", app_kubernetes_io_component="api"} == 1)
+              for: 2m
+              labels: {severity: critical}
+              annotations:
+                summary: "The detonator API is not being scraped successfully"
+                runbook_url: https://github.com/dudakovict/detonator/blob/main/docs/runbooks/api-down.md
+            - alert: QueueBacklog
+              expr: rabbitmq_queue_messages_ready{queue="analysis.jobs"} > 20
+              for: 10m
+              labels: {severity: warning}
+              annotations:
+                summary: "{{ $value }} jobs waiting for over 10 minutes; workers can't keep up"
+                runbook_url: https://github.com/dudakovict/detonator/blob/main/docs/runbooks/queue-backlog.md
+            - alert: DeadLetteredJobs
+              expr: rabbitmq_queue_messages{queue="analysis.dead"} > 0
+              for: 1m
+              labels: {severity: warning}
+              annotations:
+                summary: "{{ $value }} jobs failed three times and were dead-lettered"
+                runbook_url: https://github.com/dudakovict/detonator/blob/main/docs/runbooks/dead-lettered-jobs.md
+            - alert: JobFailureRate
+              expr: >
+                sum(rate(detonator_jobs_total{status="error"}[15m]))
+                / sum(rate(detonator_jobs_total[15m])) > 0.1
+              for: 10m
+              labels: {severity: warning}
+              annotations:
+                summary: "More than 10% of jobs are failing"
+                runbook_url: https://github.com/dudakovict/detonator/blob/main/docs/runbooks/job-failure-rate.md
+            - alert: NodeDiskFilling
+              expr: >
+                node_filesystem_avail_bytes{mountpoint="/", fstype!="tmpfs"}
+                / node_filesystem_size_bytes{mountpoint="/", fstype!="tmpfs"} < 0.15
+              for: 10m
+              labels: {severity: warning}
+              annotations:
+                summary: "Less than 15% disk left on the node (images, overlays, samples)"
+                runbook_url: https://github.com/dudakovict/detonator/blob/main/docs/runbooks/node-disk-filling.md
+
+grafana:
+  fullnameOverride: grafana
+  service:
+    type: NodePort
+    nodePort: 30300
+  # Dashboards and data sources are code; Grafana itself keeps no state.
+  persistence:
+    enabled: false
+  resources:
+    requests: {cpu: 50m, memory: 96Mi}
+    limits: {memory: 192Mi}
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          uid: prometheus
+          type: prometheus
+          url: http://prometheus
+          isDefault: true
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: detonator
+          folder: detonator
+          type: file
+          options:
+            path: /var/lib/grafana/dashboards/detonator
+  dashboardsConfigMaps:
+    detonator: grafana-dashboards
+
+# Logs: Elasticsearch + Kibana + Filebeat (templates/elk-*.yaml).
+elk:
+  version: 9.5.5
+  elasticsearch:
+    heap: 512m
+    storage: 5Gi
+    resources:
+      requests: {cpu: 100m, memory: 768Mi}
+      limits: {memory: 1Gi}
+  kibana:
+    nodePort: 30561
+    heapMB: 768 # Kibana 9 runs out of heap at 512
+    resources:
+      requests: {cpu: 50m, memory: 768Mi}
+      limits: {memory: 1200Mi}
+  filebeat:
+    resources:
+      requests: {cpu: 20m, memory: 64Mi}
+      limits: {memory: 192Mi}
+  retentionDays: 7

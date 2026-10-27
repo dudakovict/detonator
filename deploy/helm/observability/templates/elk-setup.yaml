@@ -1,0 +1,70 @@
+# Runs on every install/upgrade: sets the built-in kibana_system password,
+# creates Filebeat's limited user, the log retention policy and the Kibana data
+# view. Every step is idempotent. A plain Job (not a post-install hook), because
+# Kibana only becomes ready once this has set its password; the revision in the
+# name gives each release a fresh Job, as a Job's spec can't be changed.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: elk-setup-{{ .Release.Revision }}
+  labels:
+    {{- include "observability.labels" . | nindent 4 }}
+    app.kubernetes.io/component: elk-setup
+spec:
+  ttlSecondsAfterFinished: 3600
+  backoffLimit: 3
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        {{- include "observability.labels" . | nindent 8 }}
+        app.kubernetes.io/component: elk-setup
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: setup
+          image: elasticsearch:{{ .Values.elk.version }} # already on the node; has curl
+          env:
+            - name: ELASTIC_PASSWORD
+              valueFrom: {secretKeyRef: {name: elk-credentials, key: elastic-password}}
+            - name: KIBANA_PASSWORD
+              valueFrom: {secretKeyRef: {name: elk-credentials, key: kibana-system-password}}
+            - name: FILEBEAT_PASSWORD
+              valueFrom: {secretKeyRef: {name: elk-credentials, key: filebeat-password}}
+          command:
+            - bash
+            - -euc
+            - |
+              # Retries ride out Elasticsearch restarting during an upgrade.
+              es() { curl -fsS --retry 20 --retry-delay 5 --retry-all-errors -u "elastic:$ELASTIC_PASSWORD" -H 'Content-Type: application/json' "$@"; echo; }
+              ES=http://elasticsearch:9200
+              until es "$ES/_cluster/health?wait_for_status=yellow&timeout=5s" >/dev/null 2>&1; do sleep 5; done
+
+              es -X POST "$ES/_security/user/kibana_system/_password" -d "{\"password\": \"$KIBANA_PASSWORD\"}"
+
+              # Least privilege: Filebeat may install its templates and policy
+              # and write logs, nothing else.
+              es -X PUT "$ES/_security/role/filebeat_writer" -d '{
+                "cluster": ["monitor", "read_ilm", "read_pipeline", "manage_ilm",
+                            "manage_index_templates", "manage_ingest_pipelines"],
+                "indices": [{"names": ["filebeat-*"],
+                             "privileges": ["create_doc", "view_index_metadata", "auto_configure", "manage"]}]}'
+              es -X PUT "$ES/_security/user/filebeat" -d "{\"password\": \"$FILEBEAT_PASSWORD\", \"roles\": [\"filebeat_writer\"]}"
+
+              # Keep logs {{ .Values.elk.retentionDays }} days; roll over daily so old days can be dropped.
+              es -X PUT "$ES/_ilm/policy/detonator-logs" -d '{"policy": {"phases": {
+                "hot": {"actions": {"rollover": {"max_age": "1d", "max_primary_shard_size": "1gb"}}},
+                "delete": {"min_age": "{{ .Values.elk.retentionDays }}d", "actions": {"delete": {}}}}}}'
+
+              # Kibana may still be starting; retry for a few minutes.
+              for _ in $(seq 60); do
+                if curl -fs -u "elastic:$ELASTIC_PASSWORD" -H 'kbn-xsrf: true' -H 'Content-Type: application/json' \
+                    -X POST http://kibana:5601/api/data_views/data_view -d '{"override": true,
+                    "data_view": {"id": "filebeat", "title": "filebeat-*", "name": "Detonator logs",
+                                  "timeFieldName": "@timestamp"}}' >/dev/null; then
+                  echo "data view created"; exit 0
+                fi
+                sleep 5
+              done
+              echo "Kibana not ready; data view not created" >&2
+              exit 1

@@ -16,3 +16,6 @@ values-local.yaml
 # Packer
 packer_cache/
 output/
+
+# Helm (downloaded dependencies; Chart.lock pins them)
+deploy/helm/*/charts/

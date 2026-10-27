@@ -1,0 +1,62 @@
+{{- $kb := .Values.elk.kibana }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  labels:
+    {{- include "observability.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kibana
+spec:
+  type: NodePort
+  selector:
+    {{- include "observability.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: kibana
+  ports:
+    - name: http
+      port: 5601
+      nodePort: {{ $kb.nodePort }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  labels:
+    {{- include "observability.labels" . | nindent 4 }}
+    app.kubernetes.io/component: kibana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "observability.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: kibana
+  template:
+    metadata:
+      labels:
+        {{- include "observability.labels" . | nindent 8 }}
+        app.kubernetes.io/component: kibana
+    spec:
+      containers:
+        - name: kibana
+          image: kibana:{{ .Values.elk.version }}
+          env:
+            - name: ELASTICSEARCH_HOSTS
+              value: http://elasticsearch:9200
+            - name: ELASTICSEARCH_USERNAME
+              value: kibana_system
+            - name: ELASTICSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: elk-credentials, key: kibana-system-password}
+            # Needed for alerting rules and other encrypted saved objects.
+            - name: XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY
+              valueFrom:
+                secretKeyRef: {name: elk-credentials, key: kibana-encryption-key}
+            - name: NODE_OPTIONS
+              value: --max-old-space-size={{ $kb.heapMB }}
+          ports:
+            - containerPort: 5601
+          readinessProbe:
+            tcpSocket:
+              port: 5601
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources: {{- toYaml $kb.resources | nindent 12 }}

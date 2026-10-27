@@ -18,6 +18,18 @@ spec:
       port: 15672
       nodePort: {{ .Values.rabbitmq.managementNodePort }}
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-config
+  labels:
+    {{- include "detonator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rabbitmq
+data:
+  # Per-queue metrics (depth, consumers) instead of totals only.
+  90-prometheus.conf: |
+    prometheus.return_per_object_metrics = true
+---
 # A StatefulSet gives the pod a stable hostname (rabbitmq-0), which RabbitMQ
 # uses as its node name; its data directory is tied to that name.
 apiVersion: apps/v1
@@ -39,6 +51,9 @@ spec:
       labels:
         {{- include "detonator.labels" . | nindent 8 }}
         app.kubernetes.io/component: rabbitmq
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "15692"
     spec:
       containers:
         - name: rabbitmq
@@ -52,6 +67,7 @@ spec:
           ports:
             - containerPort: 5672
             - containerPort: 15672
+            - containerPort: 15692 # Prometheus metrics
           readinessProbe:
             exec:
               command: [rabbitmq-diagnostics, -q, check_port_connectivity]
@@ -62,6 +78,13 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/rabbitmq
+            - name: config
+              mountPath: /etc/rabbitmq/conf.d/90-prometheus.conf
+              subPath: 90-prometheus.conf
+      volumes:
+        - name: config
+          configMap:
+            name: rabbitmq-config
   volumeClaimTemplates:
     - metadata:
         name: data

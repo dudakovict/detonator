@@ -1,0 +1,85 @@
+{{- $es := .Values.elk.elasticsearch }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  labels:
+    {{- include "observability.labels" . | nindent 4 }}
+    app.kubernetes.io/component: elasticsearch
+spec:
+  selector:
+    {{- include "observability.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: elasticsearch
+  ports:
+    - name: http
+      port: 9200
+---
+# Single node: no cluster discovery, no transport TLS. Security stays on, so
+# every client authenticates. Reachable inside the cluster only (ClusterIP).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch
+  labels:
+    {{- include "observability.labels" . | nindent 4 }}
+    app.kubernetes.io/component: elasticsearch
+spec:
+  serviceName: elasticsearch
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "observability.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: elasticsearch
+  template:
+    metadata:
+      labels:
+        {{- include "observability.labels" . | nindent 8 }}
+        app.kubernetes.io/component: elasticsearch
+    spec:
+      containers:
+        - name: elasticsearch
+          image: elasticsearch:{{ .Values.elk.version }}
+          env:
+            - name: discovery.type
+              value: single-node
+            - name: xpack.security.enabled
+              value: "true"
+            - name: xpack.security.http.ssl.enabled
+              value: "false"
+            - name: xpack.security.transport.ssl.enabled
+              value: "false"
+            # Machine learning runs a separate native process with its own memory,
+            # which pushed the container over its limit. Not used here.
+            - name: xpack.ml.enabled
+              value: "false"
+            # Avoids needing vm.max_map_count raised on the node; fine at this size.
+            - name: node.store.allow_mmap
+              value: "false"
+            - name: ES_JAVA_OPTS
+              value: -Xms{{ $es.heap }} -Xmx{{ $es.heap }}
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: elk-credentials, key: elastic-password}
+          ports:
+            - containerPort: 9200
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - curl -fs -u "elastic:$ELASTIC_PASSWORD" "localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s"
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 10
+          resources: {{- toYaml $es.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/elasticsearch/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: {{ $es.storage }}

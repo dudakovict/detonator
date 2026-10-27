@@ -24,6 +24,7 @@ from pathlib import Path
 
 import boto3
 import pika
+import prometheus_client as prom
 import psycopg
 
 import analysis
@@ -40,6 +41,16 @@ NETWORK = os.environ.get("SANDBOX_NETWORK", "sbx-isolated")
 WORK_DIR = Path(os.environ.get("WORK_DIR", "/var/lib/detonator-worker"))
 JOBS_QUEUE = "analysis.jobs"
 AGENT_PORT = 8000
+# Metrics on the node's own address only (never the sandbox network); each
+# instance gets base + its VM number, e.g. sbx-linux-01 → 9411.
+METRICS_ADDR = os.environ.get("METRICS_ADDR", "127.0.0.1")
+METRICS_BASE_PORT = int(os.environ.get("METRICS_BASE_PORT", "9410"))
+
+JOBS = prom.Counter("detonator_jobs_total", "Finished jobs", ["vm", "status", "verdict"])
+JOB_DURATION = prom.Histogram("detonator_job_duration_seconds", "Wall time per job", ["vm"],
+                              buckets=(2, 5, 10, 20, 30, 45, 60, 90, 120, 180, 300))
+VM_BUSY = prom.Gauge("detonator_vm_busy", "1 while the VM is running a job", ["vm"])
+REVERT_FAILURES = prom.Counter("detonator_vm_revert_failures_total", "Failed snapshot reverts", ["vm"])
 
 s3 = boto3.client("s3", endpoint_url=S3_ENDPOINT, region_name="us-east-1",
                   aws_access_key_id=os.environ["S3_ACCESS_KEY"],
@@ -188,6 +199,8 @@ def run_job(vm, body):
         log("job_skipped", sha256=sha256, reason="no such sample")
         return True
     work = Path(tempfile.mkdtemp(dir=WORK_DIR))
+    VM_BUSY.labels(vm.name).set(1)
+    started = time.monotonic()
     try:
         report = detonate(vm, job, work)
         store_iocs(sha256, report["iocs"])
@@ -195,17 +208,22 @@ def run_job(vm, body):
                    finished_at=datetime.now(timezone.utc))
         log("job_finished", sha256=sha256, vm=vm.name, verdict=report["verdict"],
             score=report["score"], duration_s=report["analysis"]["duration_s"])
+        JOBS.labels(vm.name, "done", report["verdict"]).inc()
         return True
     except Exception as e:  # noqa: BLE001 - any failure: record it and let RabbitMQ retry
         log("job_failed", sha256=sha256, vm=vm.name, error=repr(e))
         set_status(sha256, "error", error=repr(e)[:500])
+        JOBS.labels(vm.name, "error", "none").inc()
         return False
     finally:
+        JOB_DURATION.labels(vm.name).observe(time.monotonic() - started)
         subprocess.run(["rm", "-rf", str(work)], check=False)
         try:
             vm.revert()  # never leave a sample running
         except Exception as e:  # noqa: BLE001
+            REVERT_FAILURES.labels(vm.name).inc()
             log("revert_failed", vm=vm.name, error=repr(e))
+        VM_BUSY.labels(vm.name).set(0)
 
 
 # ---------------------------------------------------------------- RabbitMQ
@@ -213,6 +231,11 @@ def run_job(vm, body):
 def main(vm_name):
     vm = SandboxVM(vm_name)
     WORK_DIR.mkdir(parents=True, exist_ok=True)
+    port = METRICS_BASE_PORT + int(vm_name.rsplit("-", 1)[1])
+    prom.start_http_server(port, addr=METRICS_ADDR)
+    VM_BUSY.labels(vm.name).set(0)
+    for status, verdict in [("done", v) for v in ("clean", "suspicious", "malicious")] + [("error", "none")]:
+        JOBS.labels(vm.name, status, verdict)  # export zeros, so rates work from the start
     connection = pika.BlockingConnection(pika.URLParameters(AMQP_URL))
     channel = connection.channel()
     channel.basic_qos(prefetch_count=1)  # one job at a time per VM

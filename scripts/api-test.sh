@@ -26,14 +26,16 @@ check "duplicate returns the existing record (200)" "[[ $code == 200 ]]"
 
 check "status lookup by SHA-256" "curl -fs $API/samples/$sha | grep -q '\"sha256\":\"$sha\"'"
 
-# RabbitMQ refreshes queue statistics every few seconds; poll briefly.
+# The job is either still in the queue or already taken by a worker. RabbitMQ
+# refreshes queue statistics every few seconds, so poll briefly.
 for _ in $(seq 10); do
   depth="$(kubectl -n $NS exec rabbitmq-0 -- rabbitmqctl -q list_queues name messages \
     | awk '$1 == "analysis.jobs" {print $2}')"
-  [[ ${depth:-0} -ge 1 ]] && break
+  state="$(curl -fs "$API/samples/$sha" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
+  [[ ${depth:-0} -ge 1 || $state != queued ]] && break
   sleep 2
 done
-check "job waiting in analysis.jobs (depth $depth)" "[[ ${depth:-0} -ge 1 ]]"
+check "job delivered (queue depth ${depth:-0}, status $state)" "[[ ${depth:-0} -ge 1 || $state != queued ]]"
 
 # Ask the API pod (it has the S3 client and credentials) for the stored object.
 size="$(kubectl -n $NS exec deploy/api -- python -c "

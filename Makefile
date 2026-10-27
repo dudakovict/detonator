@@ -15,7 +15,7 @@ BASE_IMAGE = $$($(SSH) readlink /var/lib/libvirt/images/base/sbx-linux-latest.qc
 # Written by `make node`; used by kubectl and helm.
 export KUBECONFIG ?= $(HOME)/.kube/detonator.yaml
 
-.PHONY: help ssh node sync image image-test vms vms-destroy snapshot net-test deploy api-test worker e2e
+.PHONY: help ssh node sync image image-test vms vms-destroy snapshot net-test deploy api-test worker e2e observability
 
 help: ## List targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) \
@@ -72,3 +72,8 @@ worker: ## Install the detonation workers on the node, one per sandbox VM (Ansib
 
 e2e: ## Submit the benign samples and check their verdicts and IOCs end to end
 	scripts/e2e.sh http://$(SBX_HOST):30080
+
+observability: ## Install Prometheus, Alertmanager and Grafana on k3s (Helm)
+	helm dependency build deploy/helm/observability >/dev/null
+	helm upgrade --install observability deploy/helm/observability --namespace monitoring \
+	  --create-namespace --wait --timeout 10m

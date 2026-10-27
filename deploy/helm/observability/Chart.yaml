@@ -1,0 +1,12 @@
+apiVersion: v2
+name: observability
+description: Metrics, alerts and dashboards for detonator - Prometheus, Alertmanager and Grafana.
+type: application
+version: 0.1.0
+dependencies:
+  - name: prometheus
+    version: 29.39.0
+    repository: https://prometheus-community.github.io/helm-charts
+  - name: grafana
+    version: 10.5.15
+    repository: https://grafana.github.io/helm-charts
