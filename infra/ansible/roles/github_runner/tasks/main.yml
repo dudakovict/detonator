@@ -93,6 +93,7 @@
   args:
     chdir: "{{ github_runner_dir }}"
     creates: "{{ github_runner_dir }}/.runner"
+  become: true
   become_user: github-runner
   no_log: true
 
