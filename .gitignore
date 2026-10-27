@@ -1,0 +1,14 @@
+# Terraform
+.terraform/
+*.tfstate*
+
+# Python
+.venv/
+__pycache__/
+
+# VM images
+*.qcow2
+*.iso
+
+# Local Helm overrides (contain secrets)
+values-local.yaml
