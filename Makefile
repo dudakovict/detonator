@@ -62,7 +62,7 @@ deploy: ## Build the API image, load it into k3s and install/upgrade the Helm re
 	docker tag detonator-api:build detonator-api:$$tag && \
 	docker save detonator-api:$$tag | $(SSH) sudo /usr/local/bin/k3s ctr -n k8s.io images import - >/dev/null && \
 	helm upgrade --install detonator deploy/helm/detonator --namespace detonator \
-	  --create-namespace --wait --timeout 5m --set api.image.tag=$$tag
+	  --create-namespace --atomic --timeout 5m --set api.image.tag=$$tag
 
 api-test: ## Submit a harmless sample to the API and check it was stored and queued
 	scripts/api-test.sh http://$(SBX_HOST):30080

@@ -1,0 +1,72 @@
+{{- if .Values.networkPolicy.enabled }}
+# Default deny: nothing in the namespace accepts traffic unless a policy below
+# allows it. k3s enforces these with its built-in kube-router controller.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  labels:
+    {{- include "detonator.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+# The API is the public entry point: anyone who can reach the NodePort may
+# submit samples. Prometheus scrapes it from the monitoring namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api
+  labels:
+    {{- include "detonator.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "detonator.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - port: 8000
+---
+# The backing services accept traffic only from the API, from the workers on
+# the node (through the NodePorts; see networkPolicy.nodeAddresses) and, for
+# RabbitMQ's metrics, from Prometheus.
+{{- range $component, $ports := dict "postgres" (list 5432) "rabbitmq" (list 5672 15672) "objectstore" (list 8333) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $component }}
+  labels:
+    {{- include "detonator.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "detonator.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $component }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "detonator.selectorLabels" $ | nindent 14 }}
+              app.kubernetes.io/component: api
+        {{- range $.Values.networkPolicy.nodeAddresses }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      ports:
+        {{- range $ports }}
+        - port: {{ . }}
+        {{- end }}
+    {{- if eq $component "rabbitmq" }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Values.networkPolicy.monitoringNamespace }}
+      ports:
+        - port: 15692
+    {{- end }}
+{{- end }}
+{{- end }}

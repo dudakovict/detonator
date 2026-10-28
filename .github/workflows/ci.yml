@@ -146,7 +146,7 @@ jobs:
       - name: deploy the control plane
         run: >
           helm upgrade --install detonator deploy/helm/detonator --namespace detonator
-          --wait --timeout 5m
+          --atomic --timeout 5m
           --set api.image.repository="$IMAGE" --set api.image.tag="$GITHUB_SHA"
       - name: end-to-end test
         run: scripts/e2e.sh http://192.168.200.10:30080

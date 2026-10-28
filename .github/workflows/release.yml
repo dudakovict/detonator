@@ -1,0 +1,39 @@
+name: release
+
+# Pushing a v* tag promotes the image CI already built and deployed for that
+# commit: no rebuild, so the release is byte-for-byte what ran in the lab.
+on:
+  push:
+    tags: [v*]
+
+permissions:
+  contents: write # create the GitHub release
+  packages: write # add the version tag to the image in GHCR
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/detonator-api
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: tag the image built for this commit
+        run: |
+          set -euo pipefail
+          src="$IMAGE:$GITHUB_SHA"
+          if ! docker manifest inspect "$src" >/dev/null 2>&1; then
+            echo "::error::$src does not exist: tag a commit on main that CI has already built"
+            exit 1
+          fi
+          # Registry-side copy of the manifest; nothing is pulled or rebuilt.
+          docker buildx imagetools create -t "$IMAGE:$GITHUB_REF_NAME" -t "$IMAGE:latest" "$src"
+      - name: create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes

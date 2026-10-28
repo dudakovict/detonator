@@ -36,3 +36,12 @@ objectStore:
   resources:
     requests: {cpu: 50m, memory: 128Mi}
     limits: {memory: 384Mi}
+
+# Default-deny ingress in the namespace, with holes for the API (public), the
+# API → backing services, Prometheus → RabbitMQ metrics, and the node's workers.
+# The workers connect through the NodePorts; kube-proxy masquerades that traffic
+# to the node's pod-network address (cni0), so that is what the pods see.
+networkPolicy:
+  enabled: true
+  nodeAddresses: [192.168.200.10/32, 10.42.0.1/32]
+  monitoringNamespace: monitoring

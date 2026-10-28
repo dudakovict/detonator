@@ -82,6 +82,9 @@ Prerequisites:
   sudo-capable user.
 - A Linux workstation with the tools listed above.
 
+Building the node itself (a VM or bare metal with a base OS and an SSH key) is
+outside this repository. Everything from there up is applied with `make`.
+
 ```bash
 make help        # list available targets
 make ssh         # log in to the sandbox node (SBX_HOST, SSH_KEY to override)
@@ -99,6 +102,10 @@ make observability  # Prometheus, Alertmanager, Grafana and ELK on k3s (Helm)
 make runner      # register the node as a self-hosted GitHub Actions runner (Ansible)
 ```
 
+`make deploy` is the development shortcut: it builds the API image locally and
+imports it straight into the node's containerd. The real path is CI, which pushes
+the image to GHCR and deploys it from there (see below).
+
 ## CI/CD
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and push:
@@ -115,6 +122,23 @@ The self-hosted runner never runs pull request code, and has no sudo and no SSH 
 its Kubernetes account can change only the `detonator` namespace. Changes that need
 root on the node (workers, firewall, guest images) are applied from the workstation
 with `make`.
+
+Deploys are atomic: a rollout that fails or times out is rolled back to the
+previous release before the job fails. Inside the namespace a default-deny
+NetworkPolicy allows only the API to be reached from outside; Postgres, RabbitMQ
+and the object store accept connections from the API and from the workers on
+the node.
+
+### Releases
+
+[`.github/workflows/release.yml`](.github/workflows/release.yml) runs when a `v*`
+tag is pushed. It does not rebuild anything: it adds the version tag (and
+`latest`) to the image CI built and deployed for that commit, then creates a
+GitHub release with generated notes. A tag on a commit CI has not built fails.
+
+```bash
+git tag -a v0.1.0 -m "v0.1.0" && git push origin v0.1.0
+```
 
 ## Observability
 
